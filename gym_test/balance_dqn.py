@@ -38,19 +38,19 @@ class NeuralNetwork(object):
         numpyのndarrayを使って行列演算する
         コメントの数式は1変数ずつの計算を書いているが、コードは層ごとに一括の計算であることに注意
         
-        ※1: シグモイドを使おうとも思ったが、Q関数の近似という意味では値域を0〜1に制限したりしないほうが良いのか？わからん
+        ※1: シグモイド関数を使おうとも思ったが、Q関数の近似という意味では値域を0〜1に制限したりしないほうが良いのか？わからん
         """
         # 隠れ層の計算
-        # u_j = Σ_i {x_i * w_ij }
+        # u_j = Σ_i { x_i * w_ij }
         u_hidden = np.dot(x_input, self.params['W_INPUT'])
         # y_j = φ_h(u_j)
         y_hidden = self.relu(u_hidden)  # 活性化関数はReLU
 
         # 出力層の計算
-        # u_k = Σ_j {y_j * w_jk }
+        # u_k = Σ_j { y_j * w_jk }
         u_output = np.dot(y_hidden, self.params['W_HIDDEN'])
         # y_k = φ_o(u_k)
-        # y_output = self.sigmoid(u_output)  # 活性化関数はシグモイド
+        # y_output = self.sigmoid(u_output)  # 活性化関数はシグモイド関数
         y_output = u_output  # 活性化関数は恒等関数
         return y_output
 
@@ -65,7 +65,7 @@ class NeuralNetwork(object):
         ηは学習率とする
         w_jk = w_jk - η * Δw_jk
         Δw_jk = ∂E/∂w_jk
-              = ∂E/∂y_k * ∂y/∂u_k * ∂u_k/∂w_jk
+              = ∂E/∂y_k * ∂y_k/∂u_k * ∂u_k/∂w_jk
               = (y_k - target_k) * φ_o'(u_k) * y_j
         ここで
         δ_output_k = (y_k - target_k) * φ_o'(u_k)
@@ -74,7 +74,7 @@ class NeuralNetwork(object):
         入力層 - 隠れ層間の重みは
         w_ij = w_ij - η * Δw_ij
         Δw_ij = ∂E/∂w_ij
-              = Σ_k{ ∂E/∂y_k * ∂y/∂u_k * ∂u_k/∂y_j * ∂y_j/∂u_j * ∂u_j/∂x_i }
+              = Σ_k{ ∂E/∂y_k * ∂y_k/∂u_k * ∂u_k/∂y_j * ∂y_j/∂u_j * ∂u_j/∂x_i }
               = Σ_k{ (y_k - target_k) * φ_h'(u_k) * w_jk * φ'(u_j) * x_i }
               = Σ_k{ δ_output_k * w_jk * φ_h'(u_j) * x_i }
               = Σ_k{ δ_output_k * w_jk } * φ_h'(u_j) * x_i
@@ -93,7 +93,11 @@ class NeuralNetwork(object):
 
     @staticmethod
     def relu(inputs):
-        """活性化関数ReLU"""
+        """活性化関数ReLU
+        
+        これはinputsを変更しているので、厳密に言うと良くない
+        本当はinputsをコピーするべき
+        """
         inputs[inputs < 0] = 0
         return inputs
 
