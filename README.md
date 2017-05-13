@@ -10,5 +10,5 @@ Q-Learningアルゴリズムのテスト
 ## gym_test
 [OpenAI Gym](https://gym.openai.com)の環境を動かしてみるテスト
 
-## [balance_control](https://github.com/Etanoke/ReinforcementLearning/blob/master/balance_control/README.md)
+## [balance_control](https://github.com/Etanoke/ReinforcementLearning/tree/master/balance_control)
 OpenAI GymのCarPole環境で倒立振子制御を行う
