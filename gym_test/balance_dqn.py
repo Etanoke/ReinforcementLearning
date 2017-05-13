@@ -11,18 +11,17 @@ env = gym.make('CartPole-v0')
 def get_reward(observation):
     """環境の値から報酬を計算する"""
     x, _, angle, _ = observation
-    loss = abs(x) + abs(angle) * 5
-    # DQNでは報酬を1or-1にクリッピングしたほうが学習が進みやすいらしい → 後で試す
+    loss = abs(x + 1) ** 2 + abs(angle * 5 + 1) ** 2
     return -loss
 
 
 class NeuralNetwork(object):
     """ニューラルネットワークの学習管理クラス"""
     INPUT_LAYER_NEURONS = 4  # 入力層ニューロン数
-    HIDDEN_LAYER_NEURONS = 20  # 隠れ層ニューロン数
+    HIDDEN_LAYER_NEURONS = 16  # 隠れ層ニューロン数
     OUTPUT_LAYER_NEURONS = 2  # 出力層ニューロン数 = Action数
 
-    LEARNING_RATE = 1e-4  # 学習率
+    LEARNING_RATE = 1e-3  # 学習率
 
     def __init__(self):
         # とりあえずバイアス項はなし
@@ -47,7 +46,7 @@ class NeuralNetwork(object):
         ※1: シグモイド関数を使おうとも思ったが、Q関数の近似という意味では値域を0〜1に制限したりしないほうが良いのか？わからん
         """
         # 隠れ層の計算
-        # u_j = Σ_i { x_i * w_ij } + bias
+        # u_j = Σ_i { x_i * w_ij }
         u_hidden = np.dot(x_input, self.params['W_INPUT'])
         # y_j = φ_h(u_j)
         y_hidden = self.relu(u_hidden)  # 活性化関数はReLU
@@ -64,7 +63,7 @@ class NeuralNetwork(object):
             self.output = {
                 'u_hidden': u_hidden,
                 'y_hidden': y_hidden,
-                'y_output': y_output
+                'y_output': y_output,
             }
         return y_output
 
@@ -72,7 +71,7 @@ class NeuralNetwork(object):
         """誤差逆伝搬でネットワークの重みを更新する
         
         誤差関数Eは、出力が連続値であるため自乗平均をとる
-        targetは教師信号の値(teacher_signalのほうが良いか？）
+        targetは教師信号の値
         E = Σ_k{ (target_k - y_k)^2 } / 2
         
         隠れ層 - 出力層間の重みは次の式で更新する
@@ -112,17 +111,14 @@ class NeuralNetwork(object):
         # delta_w1_tmpは　Σ_k{ δ_output_k * w_jk } * φ_h'(u_j) までの計算
         delta_w1_tmp = np.dot(self.params['W_HIDDEN'], delta_o) * delta_relu
         delta_w1 = np.outer(x_input, delta_w1_tmp)
-        self.params['W_INPUT'] += -self.LEARNING_RATE * delta_w1 
+        self.params['W_INPUT'] += -self.LEARNING_RATE * delta_w1
 
     @staticmethod
     def relu(inputs):
-        """活性化関数ReLU
-        
-        これはinputsを変更しているので、厳密に言うと良くない
-        本当はinputsをコピーするべき
-        """
-        inputs[inputs < 0] = 0
-        return inputs
+        """活性化関数ReLU"""
+        outputs = np.array(inputs)
+        outputs[outputs < 0] = 0
+        return outputs
 
     @staticmethod
     def sigmoid(inputs):
@@ -143,8 +139,7 @@ class Agent(object):
     u"""エージェント"""
     def __init__(self):
         self.action_value = {}  # Q値
-        self.gamma = 0.90  # 割引率γ
-        self.alpha = 1e-4  # 学習率α
+        self.gamma = 0.95  # 割引率γ
         self.epsilon = 0.15  # 探索率ε
         self.network = NeuralNetwork()
 
@@ -237,7 +232,7 @@ def evaluate(agent, episode_num=100):
         t = 0
         for t in range(200):
             env.render()
-            time.sleep(0.02)
+            time.sleep(0.01)
             # 環境の値に応じてエージェントが行動を選択する
             action = agent.decide_action(state, greedy=True)
             # エージェントの行動に応じて環境の状態が変わる
