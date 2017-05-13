@@ -22,11 +22,10 @@ $ git clone https://github.com/openai/gym
 $ cd gym
 $ pip install -e . # minimal install
 ```
+多分、代わりに `pip install gym` でも問題ない
 
 ## 倒立振子を動かしてみる
 ```
 $ source py35/bin/activate
-$ python3 gym_test/balance_test.py
+$ python3 gym_test/car_pole_test.py
 ```
-動かすと学習が始まる。
-適当なところでCtrl + Cを押すと学習結果を元に倒立のテストをする。
