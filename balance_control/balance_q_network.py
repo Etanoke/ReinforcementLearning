@@ -1,9 +1,9 @@
 u"""OpenAI gymのCarPole-v0をQ-Learning（Neural Network版）で学習する"""
 import enum
 import time
+import random
 
 import gym
-import numpy as np
 
 env = gym.make('CartPole-v0')
 
@@ -26,8 +26,10 @@ class NeuralNetwork(object):
     def __init__(self):
         # とりあえずバイアス項はなし
         self.params = {
-            'W_INPUT': np.random.randn(self.INPUT_LAYER_NEURONS, self.HIDDEN_LAYER_NEURONS),  # 入力層 - 隠れ層間の重み
-            'W_HIDDEN': np.random.randn(self.HIDDEN_LAYER_NEURONS, self.OUTPUT_LAYER_NEURONS),  # 隠れ層 - 出力層間の重み
+            'W_INPUT': [[random.random() for _ in range(self.HIDDEN_LAYER_NEURONS)]
+                        for _ in range(self.INPUT_LAYER_NEURONS)],  # 入力層 - 隠れ層間の重み
+            'W_HIDDEN': [[random.random() for _ in range(self.OUTPUT_LAYER_NEURONS)]
+                         for _ in range(self.HIDDEN_LAYER_NEURONS)],  # 隠れ層 - 出力層間の重み
         }
         self.output = None
 
@@ -38,22 +40,17 @@ class NeuralNetwork(object):
         隠れ層と出力層も同様にj, kと添字をふることにする
         ここではuは入力値と重みの総和、φは任意の活性化関数、yはニューロンの出力とする
         φ_hは隠れ層の活性化関数。ここではReLUを使う
-        φ_oは隠れ層の活性化関数。ここでは恒等関数を使う※1
-        
-        numpyのndarrayを使って行列演算する
-        コメントの数式は1変数ずつの計算を書いているが、コードは層ごとに一括の計算であることに注意
-        
-        ※1: シグモイド関数を使おうとも思ったが、Q関数の近似という意味では値域を0〜1に制限したりしないほうが良いのか？わからん
+        φ_oは隠れ層の活性化関数。ここでは恒等関数を使う
         """
         # 隠れ層の計算
         # u_j = Σ_i { x_i * w_ij }
-        u_hidden = np.dot(x_input, self.params['W_INPUT'])
+        u_hidden = self._poor_dot(x_input, self.params['W_INPUT'])
         # y_j = φ_h(u_j)
         y_hidden = self.relu(u_hidden)  # 活性化関数はReLU
 
         # 出力層の計算
         # u_k = Σ_j { y_j * w_jk }
-        u_output = np.dot(y_hidden, self.params['W_HIDDEN'])
+        u_output = self._poor_dot(y_hidden, self.params['W_HIDDEN'])
         # y_k = φ_o(u_k)
         # y_output = self.sigmoid(u_output)  # 活性化関数はシグモイド関数
         y_output = u_output  # 活性化関数は恒等関数
@@ -101,29 +98,40 @@ class NeuralNetwork(object):
 
         # 隠れ層 - 出力層間の重みを更新
         # 出力層の活性化関数は恒等関数なので、φ_o'(u_k) = 1
-        delta_o = y_output - target
-        delta_w2 = np.outer(y_hidden, delta_o)
-        self.params['W_HIDDEN'] += -self.LEARNING_RATE * delta_w2
+        delta_o = []
+        for y_output_k, target_k in zip(y_output, target):
+            delta_o.append(y_output_k - target_k)
+
+        for j, y_hidden_j in enumerate(y_hidden):
+            for k, delta_o_k in enumerate(delta_o):
+                self.params['W_HIDDEN'][j][k] += -self.LEARNING_RATE * y_hidden_j * delta_o_k
 
         # 入力層 - 隠れ層間の重みを更新
         # φ_h'(u_j)はReLUの微分
-        delta_relu = u_hidden > 0
+        delta_relu = [value > 0 for value in u_hidden]
         # delta_w1_tmpは　Σ_k{ δ_output_k * w_jk } * φ_h'(u_j) までの計算
-        delta_w1_tmp = np.dot(self.params['W_HIDDEN'], delta_o) * delta_relu
-        delta_w1 = np.outer(x_input, delta_w1_tmp)
-        self.params['W_INPUT'] += -self.LEARNING_RATE * delta_w1
+        delta_w1_dot = self._poor_dot(delta_o, self.params['W_HIDDEN'])
+        delta_w1_tmp = []
+        for delta_relu_j, delta_w1_dot_j in zip(delta_relu, delta_w1_dot):
+            delta_w1_tmp.append(delta_relu_j * delta_w1_dot_j)
+
+        for i, x_input_i in enumerate(x_input):
+            for j, delta_w1_j in enumerate(delta_w1_tmp):
+                self.params['W_INPUT'][i][j] += -self.LEARNING_RATE * x_input_i * delta_w1_j
 
     @staticmethod
     def relu(inputs):
         """活性化関数ReLU"""
-        outputs = np.array(inputs)
-        outputs[outputs < 0] = 0
-        return outputs
+        return [value if value > 0 else 0 for value in inputs]
 
     @staticmethod
-    def sigmoid(inputs):
-        """活性化関数シグモイド"""
-        return 1.0 / (1.0 + np.exp(-inputs))
+    def _poor_dot(value_1d, value_2d):
+        u"""np.dotの代用。1次元配列と2次元配列のみ受け付ける"""
+        outputs = [0] * len(value_2d[0])
+        for input_, weight_i in zip(value_1d, value_2d):
+            for j, weight in enumerate(weight_i):
+                outputs[j] += input_ * weight
+        return outputs
 
 
 class Action(enum.Enum):
@@ -147,7 +155,7 @@ class Agent(object):
         """方策に応じて行動を選択する"""
         # ランダムに行動を決定するのにはaction_valuesの値が必要ないが、学習のためにはネットワークを順伝搬させておく必要がある
         action_values = self.network.forward(state, should_save_output=should_save_output)
-        if not greedy and np.random.rand() < self.epsilon:
+        if not greedy and random.random() < self.epsilon:
             # ε-greedyアルゴリズムにより、self.epsilonの確率で探索行動を取る
             # 確率的に適当に行動を選択する
             return self._explore()
@@ -168,8 +176,8 @@ class Agent(object):
         が教師信号targetとなる
         """
         next_action_values = self.network.forward(next_state, should_save_output=False)
-        next_max_action_value = np.max(next_action_values)
-        target = np.array(self.network.output['y_output'])
+        next_max_action_value = max(next_action_values)
+        target = list(self.network.output['y_output'])
         # 実際に選択した行動については報酬から教師信号を計算する
         # 　→選択しなかった行動は更新させない
         target[decided_action.value] = reward + self.gamma * next_max_action_value
@@ -179,7 +187,7 @@ class Agent(object):
     @staticmethod
     def _explore():
         """ランダムな行動（探索行動）をとる"""
-        if np.random.rand() < 0.5:
+        if random.random() < 0.5:
             return Action.ACTION1
         else:
             return Action.ACTION2
