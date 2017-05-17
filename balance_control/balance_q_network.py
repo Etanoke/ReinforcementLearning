@@ -1,11 +1,15 @@
 u"""OpenAI gymのCarPole-v0をQ-Learning（Neural Network版）で学習する"""
 import enum
 import time
+import pickle
+import os
+import warnings
 
 import gym
 import numpy as np
 
 env = gym.make('CartPole-v0')
+TEACHER_FILE = 'teacher.pickle'
 
 
 def get_reward(observation):
@@ -197,14 +201,31 @@ class Agent(object):
         return max_action
 
 
+def pre_train(agent):
+    u"""事前学習的な
+
+    Args:
+        agent(Agent): 
+    """
+    if not os.path.exists(TEACHER_FILE):
+        return
+    with open(TEACHER_FILE, 'rb') as file:
+        teachers = pickle.load(file)
+    agent.network.LEARNING_RATE = 1e-4
+    for teacher in teachers:
+        agent.network.forward(teacher['inputs'], should_save_output=True)
+        agent.network.back_propagation(teacher['inputs'], teacher['targets'])
+    agent.network.LEARNING_RATE = 1e-3
+
+
 def train(agent, needs_render=False):
     steps_log = []
-    for i_episode in range(10000):
+    for i_episode in range(5000):
         state = env.reset()
         t = 0
         for t in range(200):
             # env.render()
-            # time.sleep(0.02)
+            # time.sleep(0.01)
             # 環境の値に応じてエージェントが行動を選択する
             action = agent.decide_action(state, should_save_output=True)
             # エージェントの行動に応じて環境の状態が変わる
@@ -219,11 +240,28 @@ def train(agent, needs_render=False):
         if i_episode > 0 and i_episode % 100 == 0:
             saikin = steps_log[-100:]
             print('episode: {} / 平均生存step: {}steps'.format(i_episode + 1, sum(saikin) / len(saikin)))
-        if needs_render and i_episode in [1, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400]:
-            evaluate(agent, 1)
+        # if needs_render and i_episode in [1, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400]:
+        #     evaluate(agent, 1)
         steps_log.append(t + 1)
 
     return agent
+
+
+def save_teacher_signals(agent):
+    teachers = []
+    for _ in range(1000):
+        x = np.random.randn()
+        x_dot = np.random.randn()
+        theta = np.random.randn()
+        theta_dot = np.random.randn()
+        inputs = (x, x_dot, theta, theta_dot)
+        target = agent.network.forward(inputs)
+        teachers.append({
+            'inputs': inputs,
+            'targets': target
+        })
+    with open(TEACHER_FILE, 'wb') as file:
+        pickle.dump(teachers, file)
 
 
 def evaluate(agent, episode_num=100):
@@ -245,9 +283,39 @@ def evaluate(agent, episode_num=100):
 if __name__ == '__main__':
     agent = Agent()
     try:
-        # needs_render=Trueにすると学習経過が見られる
-        agent = train(agent, needs_render=True)
+        if os.path.exists('agent.pickle'):
+            with open('agent.pickle', 'rb') as file:
+                agent = pickle.load(file)
+        else:
+            pre_train(agent)
+            # needs_render=Trueにすると学習経過が見られる
+            agent = train(agent, needs_render=True)
     except KeyboardInterrupt:
         # Ctrl+Cで学習を中断して結果確認する
         pass
-    evaluate(agent, episode_num=100)
+    with open('agent.pickle', 'wb') as file:
+        pickle.dump(agent, file)
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+
+    x_ = np.arange(-3, 3, 0.1)
+    y_ = np.arange(-3, 3, 0.1)
+    X, Y = np.meshgrid(x_, y_)
+    Z = np.sin(X) + np.cos(Y)  # 仮
+    for i, (xx, yy) in enumerate(zip(X, Y)):
+        for j, (xxx, yyy) in enumerate(zip(xx, yy)):
+            x = 0
+            x_dot = 0
+            theta = xxx
+            theta_dot = yyy
+            inputs = (x, x_dot, theta, theta_dot)
+            target = agent.network.forward(inputs)
+            Z[i][j] = target[0]
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.plot_surface(X, Y, Z, cmap=cm.coolwarm)
+
+    plt.show()
+    save_teacher_signals(agent)
+    # evaluate(agent, episode_num=100)
